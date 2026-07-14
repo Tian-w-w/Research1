@@ -204,7 +204,6 @@ def main() -> None:
             for budget in args.budgets:
                 indices = uniform_indices(576, budget, device)
                 pruned_inputs = prune_image_placeholders(base_inputs, image_token_id, indices)
-                torch.cuda.empty_cache()
                 torch.cuda.reset_peak_memory_stats(device)
                 with ImageFeaturePruner(model, indices):
                     # Time the prefill separately. It is the latency component
