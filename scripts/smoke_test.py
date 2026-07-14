@@ -83,11 +83,24 @@ def main() -> None:
             vision_feature_layer=model.config.vision_feature_layer,
             vision_feature_select_strategy=model.config.vision_feature_select_strategy,
         )
-    print(f"Image features shape: {tuple(image_features.shape)}")
-    if image_features.ndim != 3 or image_features.shape[1] != 576:
+    # Transformers releases differ here: older versions return one tensor with
+    # shape [batch, patches, hidden], while newer LLaVA implementations return
+    # a list with one [patches, hidden] tensor per input image.
+    if isinstance(image_features, list):
+        feature_shapes = [tuple(feature.shape) for feature in image_features]
+        visual_token_count = sum(feature.shape[0] for feature in image_features)
+        print(f"Image features shapes: {feature_shapes}")
+    elif isinstance(image_features, torch.Tensor):
+        feature_shapes = [tuple(image_features.shape)]
+        visual_token_count = image_features.shape[-2]
+        print(f"Image features shape: {feature_shapes[0]}")
+    else:
+        raise TypeError(f"Unexpected image feature type: {type(image_features)}")
+
+    if visual_token_count != 576:
         raise RuntimeError(
-            "Expected [batch, 576, hidden] visual features for LLaVA-1.5-7B. "
-            f"Got {tuple(image_features.shape)}. Stop here and check checkpoint/processor versions."
+            "Expected 576 visual tokens for one LLaVA-1.5-7B image. "
+            f"Got shapes {feature_shapes}. Stop here and check checkpoint/processor versions."
         )
     print("Verified: 576 visual tokens.")
 
