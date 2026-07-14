@@ -79,6 +79,14 @@ one record per `(sample, budget)` pair, including prefill and generation time.
 The reported ChartQA `quick_exact_correct` is diagnostic only; use ChartQA's
 official numeric-tolerance metric for final paper results.
 
+Create a summary report after each run:
+
+```bash
+python scripts/summarize_fixed_budget.py \
+  --input /home/wangzhengrui/wzr_research_optimize/outputs/fixed_budget/scienceqa_val_50.jsonl \
+  --output /home/wangzhengrui/wzr_research_optimize/outputs/fixed_budget/scienceqa_val_50_report.md
+```
+
 ## Important compatibility note
 
 This code uses `transformers.LlavaForConditionalGeneration`, so it requires a
