@@ -60,6 +60,25 @@ Verified: 576 visual tokens.
 Do not begin relevance-label generation or dynamic-budget training until this
 command succeeds for one ScienceQA image and one ChartQA image.
 
+## Fixed-budget baseline
+
+After the smoke test, run a small 50-sample benchmark before creating any
+explainability labels. It uniformly keeps 72, 144, 288, 432, or 576 image
+tokens, so it is a sanity baseline rather than the proposed router.
+
+```bash
+python scripts/fixed_budget_benchmark.py \
+  --config config/paths.yaml \
+  --manifest /home/wangzhengrui/wzr_research_optimize/outputs/manifests/scienceqa_val.jsonl \
+  --output /home/wangzhengrui/wzr_research_optimize/outputs/fixed_budget/scienceqa_val_50.jsonl \
+  --max-samples 50
+```
+
+Repeat the same command with `chartqa_val_human.jsonl`. The output JSONL holds
+one record per `(sample, budget)` pair, including prefill and generation time.
+The reported ChartQA `quick_exact_correct` is diagnostic only; use ChartQA's
+official numeric-tolerance metric for final paper results.
+
 ## Important compatibility note
 
 This code uses `transformers.LlavaForConditionalGeneration`, so it requires a
