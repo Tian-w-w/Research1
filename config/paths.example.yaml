@@ -1,0 +1,7 @@
+# Copy this file to config/paths.yaml on the server and keep the absolute paths.
+project_root: /home/wangzhengrui/wzr_research_optimize
+model_path: /home/wangzhengrui/research_dynamic_token/model/llava-1.5-7b-hf
+clip_path: /home/wangzhengrui/.cache/huggingface/hub/clip-vit-large-patch14-336
+scienceqa_root: /home/wangzhengrui/wzr_research_optimize/data/ScienceQA
+chartqa_root: /home/wangzhengrui/wzr_research_optimize/data/chartQA
+output_root: /home/wangzhengrui/wzr_research_optimize/outputs

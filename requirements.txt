@@ -1,0 +1,8 @@
+# Install a CUDA-compatible PyTorch build first, then install these packages.
+transformers>=4.45.0
+accelerate>=0.34.0
+pillow>=10.0.0
+PyYAML>=6.0
+tqdm>=4.66.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0
