@@ -14,6 +14,7 @@ import argparse
 import json
 import os
 import re
+import statistics
 import time
 import types
 from pathlib import Path
@@ -137,6 +138,14 @@ def load_records(manifest: Path, max_samples: int) -> list[dict[str, Any]]:
     return records[:max_samples] if max_samples else records
 
 
+def make_inputs(
+    processor: Any, record: dict[str, Any], device: torch.device
+) -> dict[str, Any]:
+    image = Image.open(record["image"]).convert("RGB")
+    prompt = f"USER: <image>\n{record['prompt']}\nASSISTANT:"
+    return move_to_device(processor(text=prompt, images=image, return_tensors="pt"), device)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, required=True)
@@ -146,6 +155,8 @@ def main() -> None:
     parser.add_argument("--max-samples", type=int, default=50,
                         help="0 means every record. Start with 50 for a smoke benchmark.")
     parser.add_argument("--max-new-tokens", type=int, default=16)
+    parser.add_argument("--prefill-repeats", type=int, default=3,
+                        help="Number of timed prefill passes per sample/budget; median is saved.")
     args = parser.parse_args()
 
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
@@ -172,14 +183,24 @@ def main() -> None:
     if image_token_id is None:
         raise AttributeError("Cannot find image_token_index/image_token_id in model config.")
 
+    # The first CUDA call for a new sequence length includes kernel setup and is
+    # not a valid latency observation. Warm every evaluated token length once.
+    warm_inputs = make_inputs(processor, records[0], device)
+    print("Warming up each visual-token budget (not recorded) ...")
+    for budget in args.budgets:
+        indices = uniform_indices(576, budget, device)
+        pruned_inputs = prune_image_placeholders(warm_inputs, image_token_id, indices)
+        with ImageFeaturePruner(model, indices), torch.inference_mode():
+            _ = model(**pruned_inputs, use_cache=True)
+            _ = model.generate(
+                **pruned_inputs, do_sample=False, max_new_tokens=2, use_cache=True
+            )
+        torch.cuda.synchronize()
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as writer:
         for record in tqdm(records, desc="Fixed-budget benchmark"):
-            image = Image.open(record["image"]).convert("RGB")
-            prompt = f"USER: <image>\n{record['prompt']}\nASSISTANT:"
-            base_inputs = move_to_device(
-                processor(text=prompt, images=image, return_tensors="pt"), device
-            )
+            base_inputs = make_inputs(processor, record, device)
             for budget in args.budgets:
                 indices = uniform_indices(576, budget, device)
                 pruned_inputs = prune_image_placeholders(base_inputs, image_token_id, indices)
@@ -187,13 +208,17 @@ def main() -> None:
                 torch.cuda.reset_peak_memory_stats(device)
                 with ImageFeaturePruner(model, indices):
                     # Time the prefill separately. It is the latency component
-                    # that token pruning is expected to improve.
-                    torch.cuda.synchronize()
-                    start = time.perf_counter()
-                    with torch.inference_mode():
-                        _ = model(**pruned_inputs, use_cache=True)
-                    torch.cuda.synchronize()
-                    prefill_seconds = time.perf_counter() - start
+                    # that token pruning is expected to improve. Median timing
+                    # reduces measurement noise on short RTX 5090 executions.
+                    prefill_measurements = []
+                    for _ in range(args.prefill_repeats):
+                        torch.cuda.synchronize()
+                        start = time.perf_counter()
+                        with torch.inference_mode():
+                            _ = model(**pruned_inputs, use_cache=True)
+                        torch.cuda.synchronize()
+                        prefill_measurements.append(time.perf_counter() - start)
+                    prefill_seconds = statistics.median(prefill_measurements)
 
                     torch.cuda.synchronize()
                     start = time.perf_counter()
@@ -220,6 +245,7 @@ def main() -> None:
                     "answer": record["answer"],
                     "quick_exact_correct": is_correct(record, prediction),
                     "prefill_seconds": prefill_seconds,
+                    "prefill_seconds_all": prefill_measurements,
                     "generate_seconds": total_seconds,
                     "peak_memory_mb": torch.cuda.max_memory_allocated(device) / 1024**2,
                 }
