@@ -83,36 +83,45 @@ def main() -> None:
         full_only = sum(not bool(low["quick_exact_correct"]) and bool(full["quick_exact_correct"]) for low, full in common)
         lines.append(f"| {budget} | {pct(same_prediction):.2f} | {low_only} | {full_only} |")
 
-    # A sample is safe if its ground-truth correctness is not lower than the
-    # full-token reference. This is the per-sample supervision target for the
-    # future budget router; it deliberately permits a compressed run to improve
-    # a full-token mistake.
-    safe_budgets: list[int] = []
+    # Teacher labels must only be made on examples where the full-token teacher
+    # is correct. If a full-token model is already wrong, treating every equally
+    # wrong compressed answer as "safe" would collapse the label distribution
+    # toward the smallest budget and create invalid router supervision.
+    min_correct_budgets: list[int] = []
+    full_incorrect = 0
     incomplete = 0
     for sample_id, per_budget in rows_by_id.items():
         if full_budget not in per_budget:
             incomplete += 1
             continue
         full_correct = bool(per_budget[full_budget]["quick_exact_correct"])
-        safe = [
+        if not full_correct:
+            full_incorrect += 1
+            continue
+        correct_budgets = [
             budget for budget in budgets
-            if budget in per_budget and bool(per_budget[budget]["quick_exact_correct"]) >= full_correct
+            if budget in per_budget and bool(per_budget[budget]["quick_exact_correct"])
         ]
-        safe_budgets.append(min(safe))
-    allocation = {budget: safe_budgets.count(budget) for budget in budgets}
+        # full_budget is correct, so this list is guaranteed to be non-empty.
+        min_correct_budgets.append(min(correct_budgets))
+    allocation = {budget: min_correct_budgets.count(budget) for budget in budgets}
     lines.extend([
         "",
-        "## Ground-truth-defined minimum safe budget",
+        "## Oracle minimum correct budget (teacher-correct subset)",
         "",
-        "A budget is considered safe when its correctness is no worse than the "
-        "576-token reference on the same example. This is a preliminary oracle "
-        "label for testing whether fixed budgets are mismatched.",
+        f"Only the {len(min_correct_budgets)} examples answered correctly at {full_budget} "
+        "tokens are eligible for budget supervision. For each such example, the "
+        "oracle label is the smallest tested budget that is also correct against "
+        "ground truth. The remaining full-token errors are excluded rather than "
+        "being mislabeled as safe low-budget examples.",
         "",
-        "| Minimum safe budget | Sample count | Share (%) |",
+        "| Minimum correct budget | Sample count | Share among eligible (%) |",
         "|---:|---:|---:|",
     ])
     for budget in budgets:
-        lines.append(f"| {budget} | {allocation[budget]} | {100 * allocation[budget] / len(safe_budgets):.2f} |")
+        share = 100 * allocation[budget] / len(min_correct_budgets) if min_correct_budgets else 0.0
+        lines.append(f"| {budget} | {allocation[budget]} | {share:.2f} |")
+    lines.append(f"\nExcluded full-token-incorrect examples: {full_incorrect}.")
     if incomplete:
         lines.append(f"\nWarning: {incomplete} samples lacked the full-budget result and were excluded.")
 
