@@ -10,10 +10,11 @@ import torch
 from PIL import Image
 
 
-SYSTEM_PROMPT = (
-    "You are solving a chart question. Read the chart carefully, reason briefly, "
-    "and end with 'Final answer: <answer>'."
-)
+SYSTEM_PROMPT = """You are solving a ChartQA question from an image.
+Read the chart carefully before answering. First write the relevant chart values
+and a step-by-step calculation or comparison. Do not answer with only a short
+phrase or number. After the reasoning, put the result on its own final line in
+exactly this form: Final answer: <answer>"""
 
 
 def set_offline_mode() -> None:
@@ -44,7 +45,14 @@ def render_prompt(processor: Any, question: str) -> str:
     }]
     if not hasattr(processor, "apply_chat_template"):
         raise RuntimeError("The configured processor lacks apply_chat_template; check checkpoint format.")
-    return processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    # Qwen3-VL checkpoints expose this switch to enable their reasoning channel.
+    # Older compatible processors may not accept it, hence the narrow fallback.
+    try:
+        return processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, enable_thinking=True
+        )
+    except TypeError:
+        return processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
 
 def generate(model: Any, processor: Any, image_path: str, question: str,

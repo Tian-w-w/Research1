@@ -30,6 +30,13 @@ per-example generated-token counts, latency, memory, raw output, final answer,
 and ChartQA relaxed correctness. Use ChartQA test only for the final report;
 controller tuning belongs to train/val.
 
+The baseline uses Qwen3-VL's thinking-enabled chat template and requires a
+step-by-step trace ending in `Final answer: ...`. It deliberately passes the
+raw manifest `question`, not its legacy concise-answer prompt. If the mean
+generated tokens are nearly identical across budget caps, inspect the saved
+`prediction` fields before interpreting the curve: the model may be ending
+before it consumes the available budget.
+
 ```bash
 python scripts/summarize_bars_fixed_budget.py \
   --input /absolute/path/to/bars_outputs/fixed_budget/chartqa_val_human.jsonl \

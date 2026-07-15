@@ -48,8 +48,11 @@ def main() -> None:
                 torch.cuda.reset_peak_memory_stats(device)
                 torch.cuda.synchronize(device)
                 started = time.perf_counter()
+                # Use the raw question, rather than the legacy manifest prompt.
+                # The latter requests a concise answer and suppresses the
+                # explicit reasoning trace required for this budget baseline.
                 raw_prediction, generated_tokens = generate(
-                    model, processor, record["image"], record["prompt"], device, budget
+                    model, processor, record["image"], record["question"], device, budget
                 )
                 torch.cuda.synchronize(device)
                 elapsed = time.perf_counter() - started
