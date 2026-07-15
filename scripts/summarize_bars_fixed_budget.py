@@ -34,17 +34,19 @@ def main() -> None:
         "# BARS fixed reasoning-budget baseline", "",
         f"- Input: `{args.input}`",
         "- Metric: ChartQA relaxed accuracy (or ScienceQA exact option accuracy).", "",
-        "| Budget cap | Samples | Accuracy (%) | Mean generated tokens | P50 latency (s) | P95 latency (s) | Mean peak memory (MB) |",
-        "|---:|---:|---:|---:|---:|---:|---:|",
+        "| Budget cap | Samples | Accuracy (%) | Complete final answer (%) | Budget exhausted (%) | Mean generated tokens | P50 latency (s) | P95 latency (s) | Mean peak memory (MB) |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for budget in sorted(by_budget):
         group = by_budget[budget]
         accuracy = 100 * sum(bool(row["correct"]) for row in group) / len(group)
+        completed = 100 * sum(bool(row.get("has_final_answer", False)) for row in group) / len(group)
+        exhausted = 100 * sum(bool(row.get("budget_exhausted", False)) for row in group) / len(group)
         tokens = [float(row["generated_tokens"]) for row in group]
         latency = [float(row["latency_seconds"]) for row in group]
         memory = [float(row["peak_memory_mb"]) for row in group]
         lines.append(
-            f"| {budget} | {len(group)} | {accuracy:.2f} | {statistics.mean(tokens):.1f} | "
+            f"| {budget} | {len(group)} | {accuracy:.2f} | {completed:.2f} | {exhausted:.2f} | {statistics.mean(tokens):.1f} | "
             f"{percentile(latency, .50):.3f} | {percentile(latency, .95):.3f} | "
             f"{statistics.mean(memory):.1f} |"
         )

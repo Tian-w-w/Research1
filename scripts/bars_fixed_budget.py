@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bars.config import read_yaml, required_path
-from bars.metrics import extract_final_answer, is_correct
+from bars.metrics import extract_marked_final_answer, has_final_answer, is_correct
 from bars.model import generate, load_qwen_vl, set_offline_mode
 
 
@@ -56,12 +56,16 @@ def main() -> None:
                 )
                 torch.cuda.synchronize(device)
                 elapsed = time.perf_counter() - started
-                answer = extract_final_answer(raw_prediction)
+                answer = extract_marked_final_answer(raw_prediction)
+                complete = has_final_answer(raw_prediction)
                 row = {
                     "id": record["id"], "dataset": record["dataset"], "split": record.get("split"),
                     "budget": budget, "max_new_tokens": budget, "generated_tokens": generated_tokens,
-                    "prediction": raw_prediction, "final_answer": answer, "answer": str(record["answer"]),
-                    "correct": is_correct(record["dataset"], raw_prediction, str(record["answer"])),
+                    "prediction": raw_prediction, "final_answer": answer,
+                    "has_final_answer": complete,
+                    "budget_exhausted": generated_tokens >= budget,
+                    "answer": str(record["answer"]),
+                    "correct": is_correct(record["dataset"], answer, str(record["answer"])),
                     "latency_seconds": elapsed,
                     "peak_memory_mb": torch.cuda.max_memory_allocated(device) / 1024**2,
                 }

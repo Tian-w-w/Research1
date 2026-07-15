@@ -27,8 +27,8 @@ python scripts/bars_fixed_budget.py \
 `bars_fixed_budget.py` is the first quality-cost curve: it evaluates identical
 examples at fixed `max_new_tokens` budgets (128/256/512/1024 by default), saves
 per-example generated-token counts, latency, memory, raw output, final answer,
-and ChartQA relaxed correctness. Use ChartQA test only for the final report;
-controller tuning belongs to train/val.
+ChartQA relaxed correctness, final-answer completion, and budget exhaustion.
+Use ChartQA test only for the final report; controller tuning belongs to train/val.
 
 The baseline uses Qwen3-VL's thinking-enabled chat template and requires a
 step-by-step trace ending in `Final answer: ...`. It deliberately passes the

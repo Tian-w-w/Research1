@@ -7,10 +7,20 @@ from decimal import Decimal, InvalidOperation
 
 
 def extract_final_answer(text: str) -> str:
-    """Return a compact final answer while retaining numeric answers faithfully."""
+    """Return a compact answer, including a direct answer from a non-BARS baseline."""
     text = text.strip()
     tagged = re.findall(r"(?:final answer|answer)\s*[:：]\s*([^\n]+)", text, re.I)
     return tagged[-1].strip() if tagged else text.splitlines()[-1].strip() if text else ""
+
+
+def has_final_answer(text: str) -> bool:
+    """Whether the reasoning trace reached the required BARS final-answer marker."""
+    return bool(re.search(r"\bfinal\s+answer\s*[:：]", text, re.I))
+
+
+def extract_marked_final_answer(text: str) -> str:
+    """Return a BARS final answer only if the trace completed its final marker."""
+    return extract_final_answer(text) if has_final_answer(text) else ""
 
 
 def _normalise_text(value: str) -> str:
