@@ -1,96 +1,40 @@
-# Dynamic visual-token budget routing: phase 1
+# BARS: budget-aware reasoning routing
 
-This package is the first, deliberately small stage of the experiment:
+This repository contains **BARS** (Budget-Aware Reasoning Scheduler):
+choose whether a multimodal model should Solve, Verify, Replan, or Stop under a
+finite *reasoning-token* budget. The main setting is **Qwen3-VL-4B + ChartQA**;
+ScienceQA is used for transfer.
 
-1. Convert the local ScienceQA and ChartQA folders to shared JSONL manifests.
-2. Load the offline Hugging Face LLaVA-1.5-7B checkpoint.
-3. Confirm an image produces exactly 576 projected visual tokens.
-4. Run one deterministic generation before implementing token pruning.
+## BARS phase-1 baseline
 
-## Server setup
+Copy `config/bars.paths.example.yaml` to `config/bars.paths.yaml`, filling in
+absolute paths on the offline GPU server. All model calls force Hugging Face
+offline mode.
 
-Copy `config/paths.example.yaml` to `config/paths.yaml`. The supplied example
-already contains the paths provided for this server.
-
-Install a PyTorch build compatible with the server CUDA driver, then install:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-The checkpoint path is expected to be a complete Hugging Face LLaVA checkpoint
-(not a LoRA adapter). The full HF LLaVA checkpoint already contains its vision
-tower. Keep the separately uploaded CLIP directory because it is useful for a
-later custom LLaVA loader, but do not load it twice in this smoke test.
-
-## Build manifests
+Install a CUDA-compatible PyTorch wheel first, then run
+`python -m pip install -r requirements.txt` from the local offline wheelhouse.
 
 ```bash
-python scripts/prepare_manifests.py --config config/paths.yaml
-```
-
-For a quick filesystem check first:
-
-```bash
-python scripts/prepare_manifests.py --config config/paths.yaml --max-per-split 2
-```
-
-Expected output is under:
-
-```text
-/home/wangzhengrui/wzr_research_optimize/outputs/manifests/
-```
-
-## Offline smoke test
-
-```bash
-python scripts/smoke_test.py \
-  --config config/paths.yaml \
-  --manifest /home/wangzhengrui/wzr_research_optimize/outputs/manifests/scienceqa_val.jsonl \
-  --index 0
-```
-
-The required checkpoint check is:
-
-```text
-Image features shape: (1, 576, 4096)
-Verified: 576 visual tokens.
-```
-
-Do not begin relevance-label generation or dynamic-budget training until this
-command succeeds for one ScienceQA image and one ChartQA image.
-
-## Fixed-budget baseline
-
-After the smoke test, run a small 50-sample benchmark before creating any
-explainability labels. It uniformly keeps 72, 144, 288, 432, or 576 image
-tokens, so it is a sanity baseline rather than the proposed router.
-
-```bash
-python scripts/fixed_budget_benchmark.py \
-  --config config/paths.yaml \
-  --manifest /home/wangzhengrui/wzr_research_optimize/outputs/manifests/scienceqa_val.jsonl \
-  --output /home/wangzhengrui/wzr_research_optimize/outputs/fixed_budget/scienceqa_val_50.jsonl \
+python scripts/check_bars_environment.py --config config/bars.paths.yaml
+python scripts/prepare_manifests.py --config config/bars.paths.yaml
+python scripts/bars_fixed_budget.py \
+  --config config/bars.paths.yaml \
+  --manifest /absolute/path/to/manifests/chartqa_val_human.jsonl \
+  --output /absolute/path/to/bars_outputs/fixed_budget/chartqa_val_human.jsonl \
   --max-samples 50
 ```
 
-Repeat the same command with `chartqa_val_human.jsonl`. The output JSONL holds
-one record per `(sample, budget)` pair, including prefill and generation time.
-The reported ChartQA `quick_exact_correct` is diagnostic only; use ChartQA's
-official numeric-tolerance metric for final paper results.
-
-Create a summary report after each run:
+`bars_fixed_budget.py` is the first quality-cost curve: it evaluates identical
+examples at fixed `max_new_tokens` budgets (128/256/512/1024 by default), saves
+per-example generated-token counts, latency, memory, raw output, final answer,
+and ChartQA relaxed correctness. Use ChartQA test only for the final report;
+controller tuning belongs to train/val.
 
 ```bash
-python scripts/summarize_fixed_budget.py \
-  --input /home/wangzhengrui/wzr_research_optimize/outputs/fixed_budget/scienceqa_val_50.jsonl \
-  --output /home/wangzhengrui/wzr_research_optimize/outputs/fixed_budget/scienceqa_val_50_report.md
+python scripts/summarize_bars_fixed_budget.py \
+  --input /absolute/path/to/bars_outputs/fixed_budget/chartqa_val_human.jsonl \
+  --output /absolute/path/to/bars_outputs/fixed_budget/chartqa_val_human.md
 ```
 
-## Important compatibility note
-
-This code uses `transformers.LlavaForConditionalGeneration`, so it requires a
-Transformers version with LLaVA support. If the uploaded checkpoint is instead
-the original `liuhaotian/LLaVA` format rather than the Hugging Face converted
-format, report the exact `config.json` error instead of changing the checkpoint.
-The loader will then be adapted to that format.
+The next implementation stage is the four BARS actions and the rule controller;
+do not treat this fixed-budget script as a dynamic router.
