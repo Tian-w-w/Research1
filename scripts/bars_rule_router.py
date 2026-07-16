@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bars.config import read_yaml, required_path
 from bars.metrics import extract_marked_final_answer, has_final_answer, is_correct
 from bars.model import generate, load_qwen_vl, set_offline_mode
-from bars.router import Action, RoutingState, choose_action
+from bars.router import Action, RoutingState, choose_action, choose_solve_only_action
 
 
 def read_records(path: Path, max_samples: int) -> list[dict[str, Any]]:
@@ -102,6 +102,8 @@ def main() -> None:
     parser.add_argument("--initial-budget", type=int, default=128)
     parser.add_argument("--action-chunk", type=int, default=128)
     parser.add_argument("--total-budget", type=int, default=512)
+    parser.add_argument("--policy", choices=("bars_rule", "solve_only"), default="bars_rule",
+                        help="bars_rule uses Solve/Verify/Replan/Stop; solve_only is its chunked fair baseline.")
     parser.add_argument("--max-actions", type=int, default=8,
                         help="Safety guard for malformed model outputs; includes the initial solve.")
     parser.add_argument("--max-samples", type=int, default=0)
@@ -144,7 +146,10 @@ def main() -> None:
                     verification_answer=verification_answer,
                     replan_count=replan_count,
                 )
-                action = choose_action(state)
+                action = (
+                    choose_action(state) if args.policy == "bars_rule"
+                    else choose_solve_only_action(state)
+                )
                 if action is Action.STOP:
                     break
                 chunk = min(args.action_chunk, state.remaining_tokens)
@@ -184,6 +189,7 @@ def main() -> None:
             final_answer = str(candidate["final_answer"])
             result = {
                 "id": record["id"],
+                "policy": args.policy,
                 "dataset": record["dataset"],
                 "split": record.get("split"),
                 "answer": str(record["answer"]),

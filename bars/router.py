@@ -44,3 +44,10 @@ def choose_action(state: RoutingState) -> Action:
     if state.replan_count == 0:
         return Action.REPLAN
     return Action.STOP
+
+
+def choose_solve_only_action(state: RoutingState) -> Action:
+    """Chunked Stop/Continue baseline with the same continuation mechanism."""
+    if state.remaining_tokens <= 0 or state.candidate_complete:
+        return Action.STOP
+    return Action.SOLVE

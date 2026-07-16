@@ -17,7 +17,15 @@ def extract_final_answer(text: str) -> str:
 
 def has_final_answer(text: str) -> bool:
     """Whether the reasoning trace reached the required BARS final-answer marker."""
-    return bool(re.search(r"\bfinal\s+answer\s*[:：]", text, re.I))
+    match = re.search(r"\bfinal\s+answer\s*[:：]\s*(.+)", text, re.I | re.S)
+    if not match:
+        return False
+    answer = match.group(1).strip()
+    # Qwen sometimes emits structured answer tags. A generation cap can leave
+    # ``<answer>7`` without its closing tag; that is unfinished, not final.
+    if answer.lower().startswith("<answer>"):
+        return bool(re.fullmatch(r"<answer>\s*.+?\s*</answer>", answer, re.I | re.S))
+    return bool(answer)
 
 
 def extract_marked_final_answer(text: str) -> str:

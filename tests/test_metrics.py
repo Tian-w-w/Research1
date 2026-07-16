@@ -26,4 +26,6 @@ def test_final_answer_and_scienceqa() -> None:
     assert extract_marked_final_answer("unfinished reasoning") == ""
     assert has_final_answer("work\nFinal answer: 42")
     assert not has_final_answer("unfinished reasoning")
+    assert not has_final_answer("Final answer: <answer>7")
+    assert has_final_answer("Final answer: <answer>72</answer>")
     assert scienceqa_correct("Reasoning.\nAnswer: C", "C")

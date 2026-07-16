@@ -1,4 +1,4 @@
-from bars.router import Action, RoutingState, choose_action
+from bars.router import Action, RoutingState, choose_action, choose_solve_only_action
 
 
 def state(**kwargs):
@@ -23,3 +23,8 @@ def test_conflicting_verification_replans_once() -> None:
 
 def test_budget_exhaustion_stops() -> None:
     assert choose_action(state(used_tokens=512)) is Action.STOP
+
+
+def test_solve_only_baseline_never_verifies_or_replans() -> None:
+    assert choose_solve_only_action(state(candidate_complete=False)) is Action.SOLVE
+    assert choose_solve_only_action(state(candidate_complete=True)) is Action.STOP

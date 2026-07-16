@@ -64,3 +64,18 @@ python scripts/bars_rule_router.py \
 Each JSONL row contains the selected action sequence, every intermediate trace,
 generated-token cost, latency, final answer, and stop reason. Run a 10-sample
 smoke test before the 50-sample comparison.
+
+For a fair ablation, run the same chunked continuation mechanism with no Verify
+or Replan:
+
+```bash
+python scripts/bars_rule_router.py \
+  --config config/bars.paths.yaml \
+  --manifest /absolute/path/to/manifests/chartqa_val_human.jsonl \
+  --output /absolute/path/to/bars_outputs/solve_only/chartqa_val_human_50.jsonl \
+  --policy solve_only --max-samples 50
+```
+
+Report this chunked `solve_only` baseline separately from the standard single-call
+fixed-budget CoT curve; the former isolates the routing actions from the cost of
+interrupting and resuming generation.
