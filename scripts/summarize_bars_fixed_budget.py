@@ -27,6 +27,14 @@ def main() -> None:
         rows = [json.loads(line) for line in handle if line.strip()]
     if not rows:
         raise ValueError("Input JSONL is empty.")
+    required_fields = {"has_final_answer", "budget_exhausted"}
+    missing_fields = required_fields.difference(rows[0])
+    if missing_fields:
+        field_list = ", ".join(sorted(missing_fields))
+        raise ValueError(
+            f"{args.input} uses the pre-completion result schema (missing: {field_list}). "
+            "Rerun scripts/bars_fixed_budget.py with the current code before summarising."
+        )
     by_budget: dict[int, list[dict]] = defaultdict(list)
     for row in rows:
         by_budget[int(row["budget"])].append(row)
@@ -40,8 +48,8 @@ def main() -> None:
     for budget in sorted(by_budget):
         group = by_budget[budget]
         accuracy = 100 * sum(bool(row["correct"]) for row in group) / len(group)
-        completed = 100 * sum(bool(row.get("has_final_answer", False)) for row in group) / len(group)
-        exhausted = 100 * sum(bool(row.get("budget_exhausted", False)) for row in group) / len(group)
+        completed = 100 * sum(bool(row["has_final_answer"]) for row in group) / len(group)
+        exhausted = 100 * sum(bool(row["budget_exhausted"]) for row in group) / len(group)
         tokens = [float(row["generated_tokens"]) for row in group]
         latency = [float(row["latency_seconds"]) for row in group]
         memory = [float(row["peak_memory_mb"]) for row in group]
