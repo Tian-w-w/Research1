@@ -26,28 +26,25 @@ def read_records(path: Path, max_samples: int) -> list[dict[str, Any]]:
     return records[:max_samples] if max_samples else records
 
 
-def action_instruction(action: Action, question: str, draft: str) -> str:
+def action_instruction(action: Action) -> str:
     if action is Action.SOLVE:
-        directive = (
-            "The draft below ended before a final answer. Continue its calculation, re-read the "
-            "chart where necessary, and complete it. Do not repeat the introduction."
+        return (
+            "Continue the unfinished reasoning from exactly where it stopped. Re-read the chart if "
+            "needed, do not repeat earlier steps, and finish with `Final answer: <answer>`."
         )
-    elif action is Action.VERIFY:
-        directive = (
+    if action is Action.VERIFY:
+        return (
             "Act as an independent verifier. Re-read the chart and recompute the answer; do not "
-            "assume the draft is correct. State the key evidence and calculation."
+            "assume the draft is correct. State the key evidence and calculation, then finish with "
+            "`Final answer: <answer>`."
         )
-    elif action is Action.REPLAN:
-        directive = (
+    if action is Action.REPLAN:
+        return (
             "The prior answer disagreed with an independent check. Discard that path and solve the "
-            "question again using a different reading or calculation approach."
+            "question again using a different reading or calculation approach. Finish with "
+            "`Final answer: <answer>`."
         )
-    else:
-        raise ValueError(f"No generation instruction for {action}.")
-    # The model wrapper supplies the common system instruction and image. This
-    # text only supplies the action-specific state and keeps every action
-    # independently auditable in the saved rollout.
-    return f"Question: {question}\n\n{directive}\n\nPrior draft:\n{draft}"
+    raise ValueError(f"No generation instruction for {action}.")
 
 
 def run_action(
@@ -55,16 +52,30 @@ def run_action(
     model: Any,
     processor: Any,
     record: dict[str, Any],
-    draft: str,
+    draft: str | None,
     device: torch.device,
     chunk: int,
+    initial: bool = False,
 ) -> tuple[dict[str, Any], str]:
     torch.cuda.synchronize(device)
     started = time.perf_counter()
-    trace, generated_tokens = generate(
-        model, processor, record["image"], action_instruction(action, record["question"], draft),
-        device, chunk,
-    )
+    if initial:
+        trace, generated_tokens = generate(
+            model, processor, record["image"], record["question"], device, chunk,
+        )
+    elif action is Action.VERIFY:
+        # A verifier must not receive the candidate's assistant trace; otherwise
+        # deterministic decoding merely echoes it instead of independently
+        # re-reading the image.
+        trace, generated_tokens = generate(
+            model, processor, record["image"], record["question"], device, chunk,
+            initial_instruction=action_instruction(action),
+        )
+    else:
+        trace, generated_tokens = generate(
+            model, processor, record["image"], record["question"], device, chunk,
+            prior_trace=draft, follow_up=action_instruction(action),
+        )
     torch.cuda.synchronize(device)
     return {
         "action": action.value,
@@ -106,8 +117,7 @@ def main() -> None:
     with args.output.open("w", encoding="utf-8") as writer:
         for record in tqdm(records, desc="Rule-based BARS"):
             initial, draft = run_action(
-                Action.SOLVE, model, processor, record, "No prior draft; solve from the chart.",
-                device, args.initial_budget,
+                Action.SOLVE, model, processor, record, None, device, args.initial_budget, initial=True,
             )
             # The initial generation is a solve, but retain its own label for
             # transparent action traces.
@@ -134,7 +144,17 @@ def main() -> None:
                 step, draft = run_action(action, model, processor, record, draft, device, chunk)
                 steps.append(step)
                 if action is Action.VERIFY:
-                    verification_answer = str(step["final_answer"])
+                    # An unfinished verifier has no opinion yet. Continue the
+                    # verification trace instead of treating an empty string as
+                    # a disagreement and prematurely replanning.
+                    verification_answer = (
+                        str(step["final_answer"]) if step["has_final_answer"] else None
+                    )
+                    if verification_answer is not None:
+                        draft = (
+                            f"Original candidate:\n{candidate['trace']}\n\n"
+                            f"Independent verification:\n{step['trace']}"
+                        )
                 else:
                     candidate = step
                     if action is Action.REPLAN:
