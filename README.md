@@ -43,5 +43,24 @@ python scripts/summarize_bars_fixed_budget.py \
   --output /absolute/path/to/bars_outputs/fixed_budget/chartqa_val_human.md
 ```
 
-The next implementation stage is the four BARS actions and the rule controller;
-do not treat this fixed-budget script as a dynamic router.
+Do not treat this fixed-budget script as a dynamic router; use it to select
+candidate chunk sizes and total budgets before comparing controllers.
+
+## Rule-based BARS (no tools)
+
+The first dynamic controller uses an initial budget of 128, a 128-token action
+chunk, and a 512-token total cap. It solves unfinished traces, independently
+verifies completed candidates, replans once after a verification disagreement,
+and stops after agreement or budget exhaustion.
+
+```bash
+python scripts/bars_rule_router.py \
+  --config config/bars.paths.yaml \
+  --manifest /absolute/path/to/manifests/chartqa_val_human.jsonl \
+  --output /absolute/path/to/bars_outputs/rule_router/chartqa_val_human_50.jsonl \
+  --max-samples 50
+```
+
+Each JSONL row contains the selected action sequence, every intermediate trace,
+generated-token cost, latency, final answer, and stop reason. Run a 10-sample
+smoke test before the 50-sample comparison.
