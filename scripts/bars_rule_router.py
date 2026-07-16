@@ -26,13 +26,18 @@ def read_records(path: Path, max_samples: int) -> list[dict[str, Any]]:
     return records[:max_samples] if max_samples else records
 
 
-def action_instruction(action: Action) -> str:
+def action_instruction(action: Action, continuation: bool = False) -> str:
     if action is Action.SOLVE:
         return (
             "Continue the unfinished reasoning from exactly where it stopped. Re-read the chart if "
             "needed, do not repeat earlier steps, and finish with `Final answer: <answer>`."
         )
     if action is Action.VERIFY:
+        if continuation:
+            return (
+                "Continue the independent verification from exactly where it stopped. Do not repeat "
+                "earlier evidence; complete the check and finish with `Final answer: <answer>`."
+            )
         return (
             "Act as an independent verifier. Re-read the chart and recompute the answer; do not "
             "assume the draft is correct. State the key evidence and calculation, then finish with "
@@ -63,7 +68,7 @@ def run_action(
         trace, generated_tokens = generate(
             model, processor, record["image"], record["question"], device, chunk,
         )
-    elif action is Action.VERIFY:
+    elif action is Action.VERIFY and draft is None:
         # A verifier must not receive the candidate's assistant trace; otherwise
         # deterministic decoding merely echoes it instead of independently
         # re-reading the image.
@@ -74,7 +79,8 @@ def run_action(
     else:
         trace, generated_tokens = generate(
             model, processor, record["image"], record["question"], device, chunk,
-            prior_trace=draft, follow_up=action_instruction(action),
+            prior_trace=draft,
+            follow_up=action_instruction(action, continuation=action is Action.VERIFY),
         )
     torch.cuda.synchronize(device)
     return {
@@ -125,6 +131,7 @@ def main() -> None:
             steps = [initial]
             candidate = initial
             verification_answer: str | None = None
+            verification_trace: str | None = None
             replan_count = 0
 
             while len(steps) < args.max_actions:
@@ -141,9 +148,19 @@ def main() -> None:
                 if action is Action.STOP:
                     break
                 chunk = min(args.action_chunk, state.remaining_tokens)
-                step, draft = run_action(action, model, processor, record, draft, device, chunk)
+                # The first verification starts independently from the image and
+                # question. If it reaches its chunk limit, later verification
+                # actions continue *that verifier's* trace, never the candidate
+                # trace, so it remains an independent evidence path.
+                action_draft = (
+                    verification_trace if action is Action.VERIFY else draft
+                )
+                step, new_trace = run_action(
+                    action, model, processor, record, action_draft, device, chunk
+                )
                 steps.append(step)
                 if action is Action.VERIFY:
+                    verification_trace = new_trace
                     # An unfinished verifier has no opinion yet. Continue the
                     # verification trace instead of treating an empty string as
                     # a disagreement and prematurely replanning.
@@ -157,9 +174,11 @@ def main() -> None:
                         )
                 else:
                     candidate = step
+                    draft = new_trace
                     if action is Action.REPLAN:
                         replan_count += 1
                         verification_answer = None
+                        verification_trace = None
 
             total_tokens = sum(int(step["generated_tokens"]) for step in steps)
             final_answer = str(candidate["final_answer"])

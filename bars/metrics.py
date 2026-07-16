@@ -10,7 +10,9 @@ def extract_final_answer(text: str) -> str:
     """Return a compact answer, including a direct answer from a non-BARS baseline."""
     text = text.strip()
     tagged = re.findall(r"(?:final answer|answer)\s*[:：]\s*([^\n]+)", text, re.I)
-    return tagged[-1].strip() if tagged else text.splitlines()[-1].strip() if text else ""
+    answer = tagged[-1].strip() if tagged else text.splitlines()[-1].strip() if text else ""
+    wrapped = re.fullmatch(r"<answer>\s*(.*?)\s*</answer>", answer, re.I | re.S)
+    return wrapped.group(1).strip() if wrapped else answer
 
 
 def has_final_answer(text: str) -> bool:

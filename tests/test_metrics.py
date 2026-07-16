@@ -21,6 +21,7 @@ def test_chartqa_relaxed_accuracy_tolerates_nearby_years() -> None:
 
 def test_final_answer_and_scienceqa() -> None:
     assert extract_final_answer("work\nFinal answer: 42") == "42"
+    assert extract_final_answer("Final answer: <answer>green</answer>") == "green"
     assert extract_final_answer("unfinished reasoning") == "unfinished reasoning"
     assert extract_marked_final_answer("unfinished reasoning") == ""
     assert has_final_answer("work\nFinal answer: 42")
